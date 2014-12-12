@@ -1,7 +1,6 @@
 #!scons
 
-env = Environment()
-# env.ParseConfig('pkg-config gtk+-2.0 --cflags --libs')
+env = Environment(CCFLAGS="-g")
 
 objects = list()
 objects.append(env.Object("main.c"))
