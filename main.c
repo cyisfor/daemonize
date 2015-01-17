@@ -3,6 +3,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+// setvbuf
+
 // getpwuid etc
 #include <sys/types.h>
 #include <pwd.h>
@@ -22,6 +24,8 @@
 #include <string.h> // memcpy strlen
 
 #include <stdarg.h> // va_arg stuff
+
+#include <stdbool.h> // true/false
 
 static char* build_assured_path(int num, ...) {
 	va_list args;
@@ -65,6 +69,13 @@ static char* build_assured_path(int num, ...) {
 	return dest;
 }
 
+inline bool noenv(const char* name) {
+    const char* value = getenv(name);
+    if(value == NULL) return true;
+    if(*value == '\0') return true;
+    return false;
+}
+
 int main(int argc, char** argv) {
 	const char* name = getenv("name");
 	const char* pidFile = getenv("pid");
@@ -88,7 +99,7 @@ int main(int argc, char** argv) {
 			if(argc>1 && NULL==strchr(argv[1],'/'))
 				name = argv[1];
 			else
-				return 1;
+				exit(1);
 		}
 		uid_t uid = getuid();
 		ssize_t nlen = strlen(name);
@@ -107,21 +118,32 @@ int main(int argc, char** argv) {
 			memcpy(base+nlen,".log",4);
 			logFile = build_assured_path(4,u->pw_dir,".local","logs",base);
 		}
-		if(!logFile) return 3;
-		if(!pidFile) return 4;
+		if(!logFile) exit(2);
+		if(!pidFile) exit(3);
 		free(base);
 	} else {
 		logFile = getenv("log");
 		if(logFile == NULL) 
-			return 2;
+			exit(4);
 	}
+
+    bool dofork = noenv("nofork");
+    bool dolog;
+    if(!dofork) {
+        dolog = ! noenv("dolog");
+    } else {
+        puts("dofork");
+        dolog = true;
+    }
+
+    //    printf("dofork %d dolog %d\n",dofork,dolog);
 		
 	int pidfd = open(pidFile,O_RDWR|O_CREAT,S_IRUSR|S_IWUSR);
 	if(pidfd>=0) {
 	  if(flock(pidfd,LOCK_EX|LOCK_NB)==-1) {
 	    // if the file is locked, there must already be a daemon running!
 	    if(errno==EWOULDBLOCK)
-	      return 0;
+	      exit(0);
 	    perror("Lock failed");
 	  }
 	    // if the file is not locked, obviously the process that locked
@@ -155,7 +177,7 @@ int main(int argc, char** argv) {
     // is O_DSYNC better?
     int flags = fcntl(1, F_GETFL);
     fcntl(1,F_SETFL,O_SYNC|flags);
-    int flags = fcntl(2, F_GETFL);
+    flags = fcntl(2, F_GETFL);
     fcntl(2,F_SETFL,O_SYNC|flags);
 	fflush(stdout);
 
@@ -175,7 +197,7 @@ int main(int argc, char** argv) {
         // First fork.
         int pid = fork();
         if(pid<0) 
-            exit(1);
+            exit(5);
         else if(pid>0) 
             exit(0); // parent process exits
 
@@ -200,9 +222,9 @@ int main(int argc, char** argv) {
 
     if(dofork) {
         //second fork
-        pid = fork();
+        int pid = fork();
         if(pid < 0)
-          exit(1);
+          exit(6);
         else if(pid > 0) {
           exit(0); // parent process exits
         }
@@ -211,8 +233,8 @@ int main(int argc, char** argv) {
 	// second fork process execs the sub-program.
     
     // these buffers proceed through the execvp apparantly...
-    setvbuf(stdout, NULL, _IONBD, 0);
-    setvbuf(stderr, NULL, _IONBD, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
 
 	execvp(argv[1],argv+1);
 
