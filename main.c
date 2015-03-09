@@ -132,7 +132,6 @@ int main(int argc, char** argv) {
     if(!dofork) {
         dolog = ! noenv("dolog");
     } else {
-        puts("dofork");
         dolog = true;
     }
 
@@ -157,7 +156,6 @@ int main(int argc, char** argv) {
 
     if(dolog) {
         int logfd = open(logFile,O_CREAT|O_WRONLY|O_APPEND|O_SYNC,S_IRUSR|S_IWUSR);
-        fprintf(stderr,"Got log %d\n",logfd);
         assert(logfd>=0);
 
         if(logfd!=1) dup2(logfd,1);
