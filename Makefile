@@ -1,10 +1,10 @@
 #CFLAGS=-g
 PREFIX?=/usr/local/bin
 
-ifeq ($(UID),0)
-install=install
-else
-install=@echo install
+ifneq ($(UID),0)
+noroot:=@echo
+seteflag:=@echo set -e
+gohere:=@echo cd $(PWD)
 endif
 
 daemonize: main.o
@@ -13,4 +13,6 @@ daemonize: main.o
 install: $(PREFIX)/daemonize
 
 $(PREFIX)/daemonize: daemonize
-	$(install) $^ $@
+	$(gohere)
+	$(noroot) strip $<
+	$(noroot) install $< $@
