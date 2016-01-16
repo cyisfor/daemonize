@@ -3,7 +3,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-// setvbuf
+// flock
+#include <sys/file.h>
 
 // getpwuid etc
 #include <sys/types.h>
@@ -69,7 +70,7 @@ static char* build_assured_path(int num, ...) {
 	return dest;
 }
 
-inline bool noenv(const char* name) {
+static bool noenv(const char* name) {
     const char* value = getenv(name);
     if(value == NULL) return true;
     if(*value == '\0') return true;
