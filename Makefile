@@ -1,4 +1,4 @@
-#CFLAGS=-g
+CFLAGS=-ggdb
 PREFIX?=/usr/local/bin
 
 ifneq ($(UID),0)
