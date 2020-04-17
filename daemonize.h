@@ -16,29 +16,28 @@ struct daemonize_info {
 								   if it forks, the pid file has a (negative) session ID to kill
 								*/
 	bool dolog;					/* open log files, or just leave stdout/stderr alone? */
-	const char* exe_path;		/*
-								  optional path to the executable, otherwise
-								 argv[1] will be tried.
-								*/
+	const char* exe_path;
+/* optional path to the executable, otherwise
+   argv[1] will be tried.
+*/
+	/* callbacks that are called after the first, and second fork.
+	 Should mostly do nothing, and just exit, because you haven't started anything up
+	in your program before calling daemonize. That would be weird, and kind of moronic.
+	No, you just called daemonize right at the top of main, no problem. Right?
+
+	Otherwise, they should do pre-exit cleanup in the processes that are just going to exit.
+	*/
 	void (*on_first_exit)(void*);
 	void (*on_second_exit)(void*);
 	void* udata;
+
+	/* the argv get passed to execv/execvp. argc are just to ensure that argv[1] is a thing,
+	   which only matters if you do not provide exe_path.
+
+	   Though it's always an error to exec with an argv of length 0, so good luck with that.
+	*/
 	int argc;
 	char*const argv[];
 };
 
-/* 
-	The program takes environment variables as parameters and 
-	a command line to be executed on argv.
-	There are three options.
-	1) provide pid=<file> and log=<file> for the pid and log file locations.
-	2) provide name=<pleasenoslashes> for the name, and 
-		* if you are root
-			it will be /var/run/<name>.pid and /var/log/<name>.log
-		* if you are not root
-			it will be ~/tmp/run/<name>.pid and ~/.local/logs/<name>.log
-	3) provide nothing, but the program executed does not have a complete path, so it can be used as a name, as with (2)
-		Such as using "svscan" instead of "/usr/sbin/svscan"
-	4) error out
-	*/
-void daemonize(const struct daemonize_info info) {
+void daemonize(const struct daemonize_info info);

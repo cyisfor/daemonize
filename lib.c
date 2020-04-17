@@ -13,7 +13,7 @@
 // SIGHUP
 #include <signal.h>
 
-#include <stdio.h>
+#include <stdio.h> // setvbuf and such
 #include <stdlib.h> // realpath
 #include <limits.h> // PATH_MAX
 
