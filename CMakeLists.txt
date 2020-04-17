@@ -13,3 +13,10 @@ add_module(cstuff
   https://github.com/cyisfor/cstuff.git)
 
 add_cstuff(record mmapfile)
+
+add_library(lib lib.c)
+target_link_libraries(lib cstuff)
+set_property(TARGET lib PROPERTY OUTPUT_NAME daemonize)
+
+add_executable(daemonize main.c)
+target_link_libraries(daemonize lib)

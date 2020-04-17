@@ -1,6 +1,8 @@
 #include "daemonize.h"
 
-#include <stdlib.h> // getenv
+#include "record.h"
+
+#include <stdlib.h> // getenv, strtol
 
 static bool noenv(const char* name) {
     const char* value = getenv(name);
