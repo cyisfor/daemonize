@@ -1,3 +1,5 @@
+#include "daemonize.h"
+
 // open:
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -261,11 +263,13 @@ void daemonize(const struct daemonize_info info) {
     setvbuf(stderr, NULL, _IONBF, 0);
 
 	if(need_lookup) {
-	  if(0!=execvp(exe_path,info.argv))
-		die(exe_path);
+	  if(0!=execvp(exe_path,info.argv)) {
+		  record(ERROR, "execvp %s", exe_path);
+	  }
 	} else {
-	  if(0!=execv(exe_path,info.argv))
-		die(exe_path);
+		  if(0!=execv(exe_path,info.argv)) {
+			  record(ERROR, "execv %s", exe_path);
+		  }
 	}
 
 	record(ERROR, "Exec failed");

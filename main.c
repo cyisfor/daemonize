@@ -25,15 +25,7 @@ const string maybe_env(const char* name) {
 	return strlenstr(value);
 }
 
-static void die(const char* message) {
-  error(errno,errno,"Error is %s",message);
-  exit(errno);
-}
-
 int main(int argc, char** argv) {
-	const char* name = getenv("name");
-	const char* pidFile = getenv("pid");
-	const char* logFile;
 	/* 
 	The program takes environment variables as parameters and 
 	a command line to be executed on argv.
@@ -49,16 +41,16 @@ int main(int argc, char** argv) {
 	NOT the files, since they're always named <name>.pid and <name>.log respectively
 	*/
 	const struct daemonize_info info = {
-		name = maybe_env("name"),
-		locations = {
-			pid = maybe_env("pid"),
-			log = maybe_env("log")
+		.name = maybe_env("name"),
+		.locations = {
+			.pid = maybe_env("pid"),
+			.log = maybe_env("log")
 		},
-		nofork = ! noenv(getenv("nofork")),
-		dolog = ! noenv(getenv("dolog"))
-		exe_path = getenv("exe"),
-		argc = argc-1,
-		argv = argv+1
+		.nofork = ! noenv(getenv("nofork")),
+		.dolog = ! noenv(getenv("dolog"))
+		.exe_path = getenv("exe"),
+		.argc = argc-1,
+		.argv = argv+1
 	};
 	daemonize(info);
 	record(ERROR, "Daemonize failed.");

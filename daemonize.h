@@ -11,7 +11,7 @@ struct daemonize_info {
 		 */
 		string pid;
 		string log;
-	};
+	} locations;
 	bool nofork;
 /* do not fork. It still saves pid file, as the current pid.
    If it forks, the pid file has a (negative) session ID to kill
