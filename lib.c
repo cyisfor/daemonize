@@ -104,7 +104,7 @@ void daemonize(const struct daemonize_info info) {
 
 	char derp[PATH_MAX];
 	// must do this BEFORE chdir("/")
-	bool need_lookup = false;
+	bool need_lookup = true;
 	char* exe_path = info.exe_path;
 	if(exe_path==NULL) {
 		exe_path = realpath(info.argv[1], derp);
@@ -120,12 +120,14 @@ void daemonize(const struct daemonize_info info) {
 					die("Path too long");		  
 				memcpy(derp+2,argv[1],len);
 				exe_path = realpath(derp, derp);
+				need_lookup = false;
 			} else {
 				// must do path lookup
-				need_lookup = true;
 				exe_path = argv[1];
 			}
-		} 
+		} else {
+			need_lookup = false;
+		}
 	}
 
 	/* now exe_path is absolute, or we're assuming it's on PATH, so we can chdir */
