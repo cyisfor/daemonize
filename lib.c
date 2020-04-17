@@ -84,10 +84,19 @@ static void die(const char* message) {
   exit(errno);
 }
 
-int main(int argc, char** argv) {
-	const char* name = getenv("name");
-	const char* pidFile = getenv("pid");
-	const char* logFile;
+struct daemonize_info {
+	string name;
+	struct locations {
+		string pid;
+		string log;
+	};
+	bool nofork;
+	bool dolog;
+	const char* exe_path;
+	int argc;
+	char*const argv[];
+};
+
 	/* This is a little confusing. Let me explain.
 	The program takes environment variables as parameters and 
 	a command line to be executed on argv.
@@ -102,108 +111,103 @@ int main(int argc, char** argv) {
 		Such as using "svscan" instead of "/usr/sbin/svscan"
 	4) error out
 	*/
-	if(pidFile==NULL) {
-		if(name == NULL) {
-			if(argc>1 && NULL==strchr(argv[1],'/'))
-				name = argv[1];
-			else
-				exit(1);
-		}
-		uid_t uid = getuid();
-		ssize_t nlen = strlen(name);
-		char* base = malloc(nlen+5);
-		memcpy(base,name,nlen);
-		base[nlen+4] = '\0';
-		if(uid==0) {
-			memcpy(base+nlen,".pid",4);
-			pidFile = build_assured_path(4,"/","var","run",base);
-			memcpy(base+nlen,".log",4);
-			logFile = build_assured_path(4,"/","var","log",base);
-		} else {
-			struct passwd* u = getpwuid(uid);
-			if(!u)
-			  exit(7);
-			memcpy(base+nlen,".pid",4);
-			pidFile = build_assured_path(4,u->pw_dir,"tmp","run",base);
-			memcpy(base+nlen,".log",4);
-			logFile = build_assured_path(4,u->pw_dir,".local","logs",base);
-		}
-		if(!logFile) exit(2);
-		if(!pidFile) exit(3);
-		free(base);
-	} else {
-		logFile = getenv("log");
-		if(logFile == NULL) 
-			exit(4);
-	}
-
-    bool dofork = noenv("nofork");
-    bool dolog;
-    if(!dofork) {
-        dolog = ! noenv("dolog");
-    } else {
-        dolog = true;
-    }
-
-    //    printf("dofork %d dolog %d\n",dofork,dolog);
-		
-	int pidfd = open(pidFile,O_RDWR|O_CREAT,S_IRUSR|S_IWUSR);
-	if(pidfd>=0) {
-	  if(flock(pidfd,LOCK_EX|LOCK_NB)==-1) {
-	    // if the file is locked, there must already be a daemon running!
-	    if(errno==EWOULDBLOCK)
-	      exit(0);
-	    perror("Lock failed");
-	  }
-	    // if the file is not locked, obviously the process that locked
-	    // it must be gone! Even if there is a process of the number in
-	    // the PID file it must just have got that number coincidentally.
-	}
-
-	signal(SIGHUP,SIG_IGN);
+void daemonize(const struct daemonize_info info) {
+	ensure_ne(NULL, info.name.base);
+	ensure_ge(info.argc, 1);
 
 	char derp[PATH_MAX];
 	// must do this BEFORE chdir("/")
-	char* exe_path = realpath(argv[1],derp);
 	bool need_lookup = false;
+	char* exe_path = info.exe_path;
 	if(exe_path==NULL) {
-	  struct stat whatever;
-	  if(0==stat(argv[1],&whatever)) {
-		derp[0] = '.';
-		derp[1] = '/';
-		ssize_t len = strlen(argv[1]);
-		if(len > PATH_MAX - 2)
-		  die("Path too long");		  
-		memcpy(derp+2,argv[1],len);
-		exe_path = derp;
-		argv[1] = exe_path;
-	  } else {
-		// must do path lookup
-		need_lookup = true;
-		exe_path = argv[1];
-	  }
-	} else {
-	  argv[1] = exe_path;
-	}
+		exe_path = realpath(info.argv[1], derp);
 	
+		if(exe_path==NULL) {
+			/* try getting a relative path? */
+			struct stat whatever;
+			if(0==stat(argv[1],&whatever)) {
+				derp[0] = '.';
+				derp[1] = '/';
+				ssize_t len = strlen(argv[1]);
+				if(len > PATH_MAX - 2)
+					die("Path too long");		  
+				memcpy(derp+2,argv[1],len);
+				exe_path = realpath(derp, derp);
+			} else {
+				// must do path lookup
+				need_lookup = true;
+				exe_path = argv[1];
+			}
+		} 
+	}
+
+	/* now exe_path is absolute, or we're assuming it's on PATH, so we can chdir */
+
+	const char* home = NULL;
+
+#define BUILD_PATH2(one, oneperm, two, twoperm) ({mkdir(one, oneperm); mkdir(one "/" two, twoperm); (one "/" two);})
+	
+	uid_t uid = getuid();
+	bstring filename = {};
+	DEFER { strclear(&filename); }
+	straddstr(&filename, info.name);
+	const size_t savepoint = filename.len;
+
+#define RESOURCE pid
+#define RESOURCE_PERM O_RDWR
+	/* not O_EXCL because we're locking this. */
+#define RESOURCE_CREATE S_IRUSR|S_IWUSR
+#define DEFAULT_ROOT_LOC BUILD_PATH2("/var", 0755, "run", 0755)
+#define DEFAULT_USER_LOC BUILD_PATH2("tmp", 0755, "run", 0700);
+#include "go_to_location.snippet.c"
+
+	if(flock(pidfd,LOCK_EX|LOCK_NB)==-1) {
+	    // if the file is locked, there must already be a daemon running, no need to run!
+	    if(errno==EWOULDBLOCK) {
+			return false;
+		}
+	    perror("Lock failed");
+	}
+	/*
+	if the file is not locked, obviously the process that locked
+	it must be gone! Even if there is a process of the number in
+	the PID file it must just have got that number coincidentally.
+
+	Regardless, we can launch the demon.
+	*/
+
+	signal(SIGHUP,SIG_IGN);
+
 	chdir("/");
 
-    if(dolog) {
-        int logfd = open(logFile,O_CREAT|O_WRONLY|O_APPEND|O_SYNC,S_IRUSR|S_IWUSR);
-        assert(logfd>=0);
-
-        if(logfd!=1) dup2(logfd,1);
-        if(logfd!=2) dup2(logfd,2);
-        if(logfd!=1&&logfd!=2) close(logfd);
+    if(info.dolog) {
+#define RESOURCE log
+#define RESOURCE_PERM O_WRONLY|O_APPEND|O_SYNC
+	/* not O_EXCL because we're locking this. */
+#define RESOURCE_CREATE S_IRUSR|S_IWUSR	
+#define DEFAULT_ROOT_LOC BUILD_PATH2("/var", 0755, "log", 0755)
+#define DEFAULT_USER_LOC BUILD_PATH2(".local", 0700, "logs", 0700)
+#include "go_to_location.snippet.c"	
+	
+        if(fds.log!=1) {
+			dup2(fds.log,1);
+		}
+		if(fds.log!=2) {
+			dup2(fds.log,2);
+		}
+        if(fds.log!=1&&fds.log!=2) {
+			close(fds.log);
+			fds.log = -1;
+		}
     } else {
         // normally dup2 sets FD_CLOEXEC automatically
 
         int flags = fcntl(1, F_GETFD);
         if(fcntl(1,F_SETFD,flags & ~FD_CLOEXEC) == -1)
-            die("stdout cloexec");
+            record(ERROR, "stdout cloexec");
         flags = fcntl(2, F_GETFD);
         if(fcntl(2,F_SETFD,flags & ~FD_CLOEXEC) == -1)
-            die("stderr cloexec");
+            record(ERROR, "stderr cloexec");
     }
     
     // is O_DSYNC better?
@@ -213,7 +217,8 @@ int main(int argc, char** argv) {
     fcntl(2,F_SETFL,O_SYNC|flags);
 	fflush(stdout);
 
-    if(dolog) {
+    if(info.dolog) {
+		/* seriously mega-close stdin */
         int nullfd = open("/dev/null",O_RDONLY);
         assert(nullfd>=0);
         if(nullfd!=0) {
@@ -223,58 +228,67 @@ int main(int argc, char** argv) {
     }
 
     int sid = 0;
-    if(dofork) {
+    if(!info.nofork) {
         setpgrp();
 
         // First fork.
         int pid = fork();
-        if(pid<0) 
-            exit(5);
-        else if(pid>0) 
+        if(pid<0) {
+			record(ERROR, "First fork failed.");
+		} else if(pid>0) {
+			if(info.on_first_exit) {
+				info.on_first_exit(info.udata);
+			}
             exit(0); // parent process exits
-
+		}
+		
         // only one process now
 
         sid = setsid();
-        // we want a session ID to kill to destroy any subsequent forks
+        // we want a session ID to kill, to destroy any subsequent forks
 
         assert(sid >= 0);
     } else {
         sid = getpid(); // hax
     }
 
-	ftruncate(pidfd,0);
-	lseek(pidfd,0,SEEK_SET);
-    if(dofork)
-    	write(pidfd,"-",1); // make the session ID parse as negative for kill
-	char buf[128];
-	int num = snprintf(buf,128,"%d",sid);
-	write(pidfd,buf,num);
-	//close(pidfd); don't close, or we lose the lock!
+	ftruncate(fds.pid,0);
+	lseek(fds.pid, 0, SEEK_SET);
 
-    if(dofork) {
+    if(!info.nofork) {
+    	write(pidfd,"-",1); // make the session ID parse as negative for kill
+	}
+	char buf[128];
+	size_t num = itoa(buf, 128, sid);
+	write(fds.pid,buf,num);
+	//close(pidfd); don't close, or we lose the lock!
+	if(!info.nofork) {
         //second fork
         int pid = fork();
-        if(pid < 0)
-          exit(6);
-        else if(pid > 0) {
+        if(pid < 0) {
+			record(ERROR, "Second fork failed");
+		} else if(pid > 0) {
+			if(info.on_second_exit) {
+				info.on_second_exit(info.udata);
+			}
           exit(0); // parent process exits
         }
     }
 	// only one process now
 	// second fork process execs the sub-program.
     
-    // these buffers proceed through the execvp apparantly...
+    // these buffers persist through the execvp, somehow...
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
 
 	if(need_lookup) {
-	  if(0!=execvp(exe_path,argv+1))
+	  if(0!=execvp(exe_path,info.argv))
 		die(exe_path);
 	} else {
-	  if(0!=execv(exe_path,argv+1))
+	  if(0!=execv(exe_path,info.argv))
 		die(exe_path);
 	}
 
-	return 0;
+	record(ERROR, "Exec failed");
+	abort();
 }
