@@ -84,20 +84,7 @@ static void die(const char* message) {
   exit(errno);
 }
 
-struct daemonize_info {
-	string name;
-	struct locations {
-		string pid;
-		string log;
-	};
-	bool nofork;
-	bool dolog;
-	const char* exe_path;
-	int argc;
-	char*const argv[];
-};
-
-	/* This is a little confusing. Let me explain.
+	/* 
 	The program takes environment variables as parameters and 
 	a command line to be executed on argv.
 	There are three options.
@@ -106,7 +93,7 @@ struct daemonize_info {
 		* if you are root
 			it will be /var/run/<name>.pid and /var/log/<name>.log
 		* if you are not root
-			it will be ~/tmp/run/<name>.pid and ~/.local/logs/<name>.log
+			it will be ~/run/<name>.pid and ~/.local/logs/<name>.log
 	3) provide nothing, but the program executed does not have a complete path, so it can be used as a name, as with (2)
 		Such as using "svscan" instead of "/usr/sbin/svscan"
 	4) error out
@@ -145,7 +132,8 @@ void daemonize(const struct daemonize_info info) {
 
 	const char* home = NULL;
 
-#define BUILD_PATH2(one, oneperm, two, twoperm) ({mkdir(one, oneperm); mkdir(one "/" two, twoperm); (one "/" two);})
+#define BUILD_PATH1(one, oneperm) ({mkdir(one, oneperm); (one);})
+#define BUILD_PATH2(one, oneperm, two, twoperm) ({mkdir(one, oneperm); BUILD_PATH1(one "/" two);})
 	
 	uid_t uid = getuid();
 	bstring filename = {};
@@ -158,7 +146,7 @@ void daemonize(const struct daemonize_info info) {
 	/* not O_EXCL because we're locking this. */
 #define RESOURCE_CREATE S_IRUSR|S_IWUSR
 #define DEFAULT_ROOT_LOC BUILD_PATH2("/var", 0755, "run", 0755)
-#define DEFAULT_USER_LOC BUILD_PATH2("tmp", 0755, "run", 0700);
+#define DEFAULT_USER_LOC BUILD_PATH1("run", 0700);
 #include "go_to_location.snippet.c"
 
 	if(flock(pidfd,LOCK_EX|LOCK_NB)==-1) {
