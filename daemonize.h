@@ -39,7 +39,7 @@ struct daemonize_info {
 	   Though it's always an error to exec with an argv of length 0, so good luck with that.
 	*/
 	int argc;
-	char*const argv[];
+	char*const*const argv;
 };
 
 void daemonize(const struct daemonize_info info);

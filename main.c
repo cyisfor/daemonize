@@ -47,12 +47,12 @@ int main(int argc, char** argv) {
 			.log = maybe_env("log")
 		},
 		.nofork = ! noenv(getenv("nofork")),
-		.dolog = ! noenv(getenv("dolog"))
+		.dolog = ! noenv(getenv("dolog")),
 		.exe_path = getenv("exe"),
 		.argc = argc-1,
 		.argv = argv+1
 	};
 	daemonize(info);
-	record(ERROR, "Daemonize failed.");
+	record(INFO, "Daemon already running.");
 	return 0;
 }

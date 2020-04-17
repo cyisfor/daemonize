@@ -1,5 +1,8 @@
 #include "daemonize.h"
 
+#include "ensure.h"
+#include "concatsym.h"			/* STRIFY */
+
 // open:
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -90,7 +93,7 @@ void daemonize(const struct daemonize_info info) {
 		straddstr(&filename, info.name);
 	}
 	bool need_lookup = true;
-	char* exe_path = info.exe_path;
+	const char* exe_path = info.exe_path;
 	if(exe_path==NULL) {
 		exe_path = realpath(info.argv[1], derp);
 		if(exe_path==NULL) {
@@ -116,7 +119,7 @@ void daemonize(const struct daemonize_info info) {
 				need_lookup = false;
 			} else {
 				// must do path lookup
-				exe_path = argv[1];
+				exe_path = info.argv[1];
 			}
 		} else {
 			need_lookup = false;
@@ -125,12 +128,16 @@ void daemonize(const struct daemonize_info info) {
 	ensure_gt(filename.len, 0);
 	const size_t savepoint = filename.len;
 
+	struct fds {
+		int log;
+		int pid;
+	} fds;
 	/* now exe_path is absolute, or we're assuming it's on PATH, so we can chdir */
 
 	const char* home = NULL;
 
 #define BUILD_PATH1(one, oneperm) ({mkdir(one, oneperm); (one);})
-#define BUILD_PATH2(one, oneperm, two, twoperm) ({mkdir(one, oneperm); BUILD_PATH1(one "/" two);})
+#define BUILD_PATH2(one, oneperm, two, twoperm) ({mkdir(one, oneperm); BUILD_PATH1(one "/" two, twoperm);})
 
 	uid_t uid = getuid();
 
@@ -139,13 +146,13 @@ void daemonize(const struct daemonize_info info) {
 	/* not O_EXCL because we're locking this. */
 #define RESOURCE_CREATE S_IRUSR|S_IWUSR
 #define DEFAULT_ROOT_LOC BUILD_PATH2("/var", 0755, "run", 0755)
-#define DEFAULT_USER_LOC BUILD_PATH1("run", 0700);
+#define DEFAULT_USER_LOC BUILD_PATH1("run", 0700)
 #include "go_to_location.snippet.c"
 
-	if(flock(pidfd,LOCK_EX|LOCK_NB)==-1) {
+	if(flock(fds.pid,LOCK_EX|LOCK_NB)==-1) {
 	    // if the file is locked, there must already be a daemon running, no need to run!
 	    if(errno==EWOULDBLOCK) {
-			return false;
+			return;
 		}
 	    perror("Lock failed");
 	}
@@ -237,12 +244,12 @@ void daemonize(const struct daemonize_info info) {
 	lseek(fds.pid, 0, SEEK_SET);
 
     if(!info.nofork) {
-    	write(pidfd,"-",1); // make the session ID parse as negative for kill
+    	write(fds.pid,"-",1); // make the session ID parse as negative for kill
 	}
 	char buf[128];
 	size_t num = itoa(buf, 128, sid);
 	write(fds.pid,buf,num);
-	//close(pidfd); don't close, or we lose the lock!
+	//close(fds.pid); don't close, or we lose the lock!
 	if(!info.nofork) {
         //second fork
         int pid = fork();
