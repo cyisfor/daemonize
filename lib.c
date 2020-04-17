@@ -48,7 +48,7 @@ static char* build_assured_path(int num, ...) {
 	}
 	char* dest = (char*) malloc(length + (num - 1) + 1);
 	char* cur = dest;
-	ssize_t pos = 0;
+
 	for(i=0;i<num;++i) {
 		cur = stpcpy(cur,elements[i]);
 		if(i!=num-1) {
@@ -108,14 +108,15 @@ void daemonize(const struct daemonize_info info) {
 			/* try getting a relative path? */
 			struct stat whatever;
 
-			if(0==stat(firstarg.base, &whatever)) {
+			if(0==stat((const char*)firstarg.base, &whatever)) {
 				if(firstarg.len > PATH_MAX - 3)
 					record(ERROR, "Path too long");
 				derp[0] = '.';
 				derp[1] = '/';				
 				memcpy(derp+2, STRANDLEN(firstarg));
 				derp[2+firstarg.len] = 0; /* grumble */
-				exe_path = realpath(derp, derp);
+				char herp[PATH_MAX];		  /* GRUMBLE */
+				exe_path = realpath(derp, herp);
 				need_lookup = false;
 			} else {
 				// must do path lookup
@@ -245,9 +246,10 @@ void daemonize(const struct daemonize_info info) {
 	lseek(fds.pid, 0, SEEK_SET);
 
     if(!info.nofork) {
-    	write(fds.pid,"-",1); // make the session ID parse as negative for kill
+    	ensure_eq(1,
+				  write(fds.pid,"-",1)); // make the session ID parse as negative for kill
 	}
-	char buf[128];
+	byte buf[128];
 	size_t num = itoa(buf, 128, sid);
 	ensure_eq(num, write(fds.pid,buf,num));
 	fsync(fds.pid);

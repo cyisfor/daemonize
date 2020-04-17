@@ -20,3 +20,5 @@ set_property(TARGET lib PROPERTY OUTPUT_NAME daemonize)
 
 add_executable(daemonize main.c)
 target_link_libraries(daemonize lib)
+
+install(TARGETS daemonize lib)

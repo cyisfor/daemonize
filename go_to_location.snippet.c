@@ -22,8 +22,9 @@
 	}
 
 	stradd(&filename, "." STRIFY(RESOURCE) "\0");
-	fds.pid = open(filename.base, RESOURCE_DERP, RESOURCE_CREATE);
-	ensure_ge(fds.pid, 0);
+	fds.RESOURCE = open((const char*)filename.base,
+						RESOURCE_DERP, RESOURCE_CREATE);
+	ensure_ge(fds.RESOURCE, 0);
 	filename.len = savepoint;
 
 #undef RESOURCE
