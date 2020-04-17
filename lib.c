@@ -120,7 +120,8 @@ void daemonize(const struct daemonize_info info) {
 			need_lookup = false;
 		}
 	}
-	ensure_gt(name.len, 0);
+	ensure_gt(filename.len, 0);
+	const size_t savepoint = filename.len;
 
 	/* now exe_path is absolute, or we're assuming it's on PATH, so we can chdir */
 
@@ -130,8 +131,6 @@ void daemonize(const struct daemonize_info info) {
 #define BUILD_PATH2(one, oneperm, two, twoperm) ({mkdir(one, oneperm); BUILD_PATH1(one "/" two);})
 
 	uid_t uid = getuid();
-	straddstr(&filename, name);
-	const size_t savepoint = filename.len;
 
 #define RESOURCE pid
 #define RESOURCE_PERM O_RDWR
