@@ -16,7 +16,7 @@ struct daemonize_info {
 /* do not fork. It still saves pid file, as the current pid.
    If it forks, the pid file has a (negative) session ID to kill
 */
-	bool dolog;
+	bool nolog;
 /* open log files, or just leave stdout/stderr alone? */
 	const char* exe_path;
 /* optional path to the executable, otherwise

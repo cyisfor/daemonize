@@ -95,10 +95,10 @@ void daemonize(const struct daemonize_info info) {
 	bool need_lookup = true;
 	const char* exe_path = info.exe_path;
 	if(exe_path==NULL) {
-		exe_path = realpath(info.argv[1], derp);
+		exe_path = realpath(info.argv[0], derp);
 		if(exe_path==NULL) {
 			ensure_ge(info.argc, 1);
-			const string firstarg = strlenstr(info.argv[1]);
+			const string firstarg = strlenstr(info.argv[0]);
 			if(filename.len == 0) {
 				memcpy(derp, firstarg.base, firstarg.len);
 				derp[firstarg.len] = 0;
@@ -119,7 +119,7 @@ void daemonize(const struct daemonize_info info) {
 				need_lookup = false;
 			} else {
 				// must do path lookup
-				exe_path = info.argv[1];
+				exe_path = info.argv[0];
 			}
 		} else {
 			need_lookup = false;
@@ -168,7 +168,7 @@ void daemonize(const struct daemonize_info info) {
 
 	chdir("/");
 
-    if(info.dolog) {
+    if(!info.nolog) {
 #define RESOURCE log
 #define RESOURCE_PERM O_WRONLY|O_APPEND|O_SYNC
 	/* not O_EXCL because we're locking this. */
@@ -205,7 +205,7 @@ void daemonize(const struct daemonize_info info) {
     fcntl(2,F_SETFL,O_SYNC|flags);
 	fflush(stdout);
 
-    if(info.dolog) {
+    if(!info.nolog) {
 		/* seriously mega-close stdin */
         int nullfd = open("/dev/null",O_RDONLY);
         assert(nullfd>=0);
@@ -227,6 +227,7 @@ void daemonize(const struct daemonize_info info) {
 			if(info.on_first_exit) {
 				info.on_first_exit(info.udata);
 			}
+			close(fds.pid);
             exit(0); // parent process exits
 		}
 
@@ -248,7 +249,8 @@ void daemonize(const struct daemonize_info info) {
 	}
 	char buf[128];
 	size_t num = itoa(buf, 128, sid);
-	write(fds.pid,buf,num);
+	ensure_eq(num, write(fds.pid,buf,num));
+	fsync(fds.pid);
 	//close(fds.pid); don't close, or we lose the lock!
 	if(!info.nofork) {
         //second fork
@@ -259,7 +261,8 @@ void daemonize(const struct daemonize_info info) {
 			if(info.on_second_exit) {
 				info.on_second_exit(info.udata);
 			}
-          exit(0); // parent process exits
+			close(fds.pid);
+			exit(0); // parent process exits
         }
     }
 	// only one process now

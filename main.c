@@ -4,8 +4,7 @@
 
 #include <stdlib.h> // getenv, strtol
 
-static bool noenv(const char* name) {
-    const char* value = getenv(name);
+static bool noenv(const char* value) {
     if(value == NULL) return true;
     if(*value == '\0') return true;
 	char* end = NULL;
@@ -47,7 +46,7 @@ int main(int argc, char** argv) {
 			.log = maybe_env("log")
 		},
 		.nofork = ! noenv(getenv("nofork")),
-		.dolog = ! noenv(getenv("dolog")),
+		.nolog = ! noenv(getenv("nolog")),
 		.exe_path = getenv("exe"),
 		.argc = argc-1,
 		.argv = argv+1
