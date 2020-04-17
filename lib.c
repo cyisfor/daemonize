@@ -1,5 +1,5 @@
 // open:
-#include <sys/types.h> 
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -68,7 +68,7 @@ static char* build_assured_path(int num, ...) {
 
 	free(elements);
 	va_end(args);
-	
+
 	return dest;
 }
 
@@ -79,46 +79,37 @@ static bool noenv(const char* name) {
     return false;
 }
 
-static void die(const char* message) {
-  error(errno,errno,"Error is %s",message);
-  exit(errno);
-}
-
-	/* 
-	The program takes environment variables as parameters and 
-	a command line to be executed on argv.
-	There are three options.
-	1) provide pid=<file> and log=<file> for the pid and log file locations.
-	2) provide name=<pleasenoslashes> for the name, and 
-		* if you are root
-			it will be /var/run/<name>.pid and /var/log/<name>.log
-		* if you are not root
-			it will be ~/run/<name>.pid and ~/.local/logs/<name>.log
-	3) provide nothing, but the program executed does not have a complete path, so it can be used as a name, as with (2)
-		Such as using "svscan" instead of "/usr/sbin/svscan"
-	4) error out
-	*/
 void daemonize(const struct daemonize_info info) {
-	ensure_ne(NULL, info.name.base);
-	ensure_ge(info.argc, 1);
-
 	char derp[PATH_MAX];
 	// must do this BEFORE chdir("/")
+	bstring filename = {};
+	DEFER { strclear(&filename); }
+	if(info.name.len > 0) {
+		straddstr(&filename, info.name);
+	}
 	bool need_lookup = true;
 	char* exe_path = info.exe_path;
 	if(exe_path==NULL) {
 		exe_path = realpath(info.argv[1], derp);
-	
 		if(exe_path==NULL) {
+			ensure_ge(info.argc, 1);
+			const string firstarg = strlenstr(info.argv[1]);
+			if(filename.len == 0) {
+				memcpy(derp, firstarg.base, firstarg.len);
+				derp[firstarg.len] = 0;
+				straddstr(&filename, strlenstr(basename(derp)));
+			}
+
 			/* try getting a relative path? */
 			struct stat whatever;
-			if(0==stat(argv[1],&whatever)) {
+
+			if(0==stat(firstarg.base, &whatever)) {
+				if(firstarg.len > PATH_MAX - 3)
+					record(ERROR, "Path too long");
 				derp[0] = '.';
-				derp[1] = '/';
-				ssize_t len = strlen(argv[1]);
-				if(len > PATH_MAX - 2)
-					die("Path too long");		  
-				memcpy(derp+2,argv[1],len);
+				derp[1] = '/';				
+				memcpy(derp+2, STRANDLEN(firstarg));
+				derp[2+firstarg.len] = 0; /* grumble */
 				exe_path = realpath(derp, derp);
 				need_lookup = false;
 			} else {
@@ -129,6 +120,7 @@ void daemonize(const struct daemonize_info info) {
 			need_lookup = false;
 		}
 	}
+	ensure_gt(name.len, 0);
 
 	/* now exe_path is absolute, or we're assuming it's on PATH, so we can chdir */
 
@@ -136,11 +128,9 @@ void daemonize(const struct daemonize_info info) {
 
 #define BUILD_PATH1(one, oneperm) ({mkdir(one, oneperm); (one);})
 #define BUILD_PATH2(one, oneperm, two, twoperm) ({mkdir(one, oneperm); BUILD_PATH1(one "/" two);})
-	
+
 	uid_t uid = getuid();
-	bstring filename = {};
-	DEFER { strclear(&filename); }
-	straddstr(&filename, info.name);
+	straddstr(&filename, name);
 	const size_t savepoint = filename.len;
 
 #define RESOURCE pid
@@ -174,11 +164,11 @@ void daemonize(const struct daemonize_info info) {
 #define RESOURCE log
 #define RESOURCE_PERM O_WRONLY|O_APPEND|O_SYNC
 	/* not O_EXCL because we're locking this. */
-#define RESOURCE_CREATE S_IRUSR|S_IWUSR	
+#define RESOURCE_CREATE S_IRUSR|S_IWUSR
 #define DEFAULT_ROOT_LOC BUILD_PATH2("/var", 0755, "log", 0755)
 #define DEFAULT_USER_LOC BUILD_PATH2(".local", 0700, "logs", 0700)
-#include "go_to_location.snippet.c"	
-	
+#include "go_to_location.snippet.c"
+
         if(fds.log!=1) {
 			dup2(fds.log,1);
 		}
@@ -199,7 +189,7 @@ void daemonize(const struct daemonize_info info) {
         if(fcntl(2,F_SETFD,flags & ~FD_CLOEXEC) == -1)
             record(ERROR, "stderr cloexec");
     }
-    
+
     // is O_DSYNC better?
     int flags = fcntl(1, F_GETFL);
     fcntl(1,F_SETFL,O_SYNC|flags);
@@ -231,7 +221,7 @@ void daemonize(const struct daemonize_info info) {
 			}
             exit(0); // parent process exits
 		}
-		
+
         // only one process now
 
         sid = setsid();
@@ -266,7 +256,7 @@ void daemonize(const struct daemonize_info info) {
     }
 	// only one process now
 	// second fork process execs the sub-program.
-    
+
     // these buffers persist through the execvp, somehow...
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);

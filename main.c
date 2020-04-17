@@ -1,76 +1,6 @@
-// open:
-#include <sys/types.h> 
-#include <sys/stat.h>
-#include <fcntl.h>
+#include "daemonize.h"
 
-// flock
-#include <sys/file.h>
-
-// getpwuid etc
-#include <sys/types.h>
-#include <pwd.h>
-
-// SIGHUP
-#include <signal.h>
-
-#include <stdio.h>
-#include <stdlib.h> // realpath
-#include <limits.h> // PATH_MAX
-
-#include <assert.h>
-
-#include <unistd.h> // execlp
-
-#include <errno.h>
-#include <error.h>
-
-#include <string.h> // memcpy strlen
-
-#include <stdarg.h> // va_arg stuff
-
-#include <stdbool.h> // true/false
-
-static char* build_assured_path(int num, ...) {
-	va_list args;
-	va_start(args,num);
-	int i;
-	const char** elements = (const char**) malloc(num*sizeof(const char*));
-	ssize_t length = 0;
-	for(i=0;i<num;++i) {
-		const char* element = va_arg(args,const char*);
-		elements[i] = element;
-		length += strlen(element);
-	}
-	char* dest = (char*) malloc(length + (num - 1) + 1);
-	char* cur = dest;
-	ssize_t pos = 0;
-	for(i=0;i<num;++i) {
-		cur = stpcpy(cur,elements[i]);
-		if(i!=num-1) {
-			*(cur++) = '/';
-			cur[0] = '\0';
-			//printf("Making %s\n",dest);
-			if(mkdir(dest,0700)) {
-				switch(errno) {
-				case EEXIST:
-					continue;
-				default:
-					free(dest);
-					free(elements);
-					va_end(args);
-					return NULL;
-				};
-			}
-		} else {
-			cur[0] = '\0';
-		}
-	}
-
-	free(elements);
-	va_end(args);
-	
-	return dest;
-}
+#include <stdlib.h> // getenv
 
 static bool noenv(const char* name) {
     const char* value = getenv(name);
@@ -88,21 +18,27 @@ int main(int argc, char** argv) {
 	const char* name = getenv("name");
 	const char* pidFile = getenv("pid");
 	const char* logFile;
-	/* This is a little confusing. Let me explain.
+	/* 
 	The program takes environment variables as parameters and 
 	a command line to be executed on argv.
+	you can either provide name=<pleasenoslashes> for the name, or it will try to get the name
+	from the executable path.
+
 	There are three options.
-	1) provide pid=<file> and log=<file> for the pid and log file locations.
-	2) provide name=<pleasenoslashes> for the name, and 
+	1) provide pid=<location> and log=<location> for the pid and log file locations.
+	otherwise:
 		* if you are root
-			it will be /var/run/<name>.pid and /var/log/<name>.log
+			it will be /var/run/ and /var/log/
 		* if you are not root
-			it will be ~/tmp/run/<name>.pid and ~/.local/logs/<name>.log
+			it will be $HOME/run/ and $HOME/.local/logs/
+	NOT the files, since they're always named <name>.pid and <name>.log respectively
 	3) provide nothing, but the program executed does not have a complete path, so it can be used as a name, as with (2)
 		Such as using "svscan" instead of "/usr/sbin/svscan"
 	4) error out
 	*/
-	if(pidFile==NULL) {
+	struct daemonize_info info = {};
+	if(getenv("pid")) {
+		info.locations.pid 
 		if(name == NULL) {
 			if(argc>1 && NULL==strchr(argv[1],'/'))
 				name = argv[1];
